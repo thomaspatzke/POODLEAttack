@@ -17,11 +17,13 @@
 
 import socket
 import socketserver
+import http.server
 import struct
 import select
+from multiprocessing import Process, Queue
 
 ### Configuration ###
-host = "localhost"
+listenHost = "localhost"
 tlsPort = 8443
 serverHost = "localhost"
 serverPort = 4433
@@ -29,6 +31,7 @@ httpPort = 8080
 timeout = 30.0
 #####################
 
+### TLS/SSL ###
 class TLSRecord:
     tlsContentType = {20: 'change_cipher_spec', 21: 'alert', 22: 'handshake', 23: 'application_data'}
 
@@ -96,6 +99,27 @@ class SSLTLSHandler(socketserver.BaseRequestHandler):
 class SSLTLSProxy(socketserver.ThreadingMixIn, socketserver.TCPServer):
     allow_reuse_address = True
 
+### HTTP ###
+class PoodleHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
+    pass
+
+### Functions ###
+def ssltlsServer(queue):
+    print("Starting SSL/TLS server")
+    server = SSLTLSProxy((listenHost, tlsPort), SSLTLSHandler)
+    server.serve_forever()
+
+def httpServer(queue):
+    print("Starting HTTP server")
+    server = http.server.HTTPServer((listenHost, httpPort), PoodleHTTPRequestHandler)
+    server.serve_forever()
+
 ### Main ###
-tlsServer = SSLTLSProxy((host, tlsPort), SSLTLSHandler)
-tlsServer.serve_forever()
+commandQueue = Queue()
+poodleSSLTLSServer = Process(target=ssltlsServer, args=(commandQueue,))
+poodleSSLTLSServer.start()
+poodleHTTPServer = Process(target=httpServer, args=(commandQueue,))
+poodleHTTPServer.start()
+
+poodleSSLTLSServer.join()
+poodleHTTPServer.join()
