@@ -113,7 +113,7 @@ class PoodleHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         response = """<!DOCTYPE html>
         <h1>POODLE Request Generator</h1>
-        <script>
+        <script type="text/javascript">
         """ + jsCode + """
         </script>
         """
