@@ -3,7 +3,7 @@ var postlen = 16;
 
 function strPad(n) {
     if (n > 0) {
-        return Array(n - 1).join("A");
+        return Array(n + 1).join("A");
     } else {
         return "";
     }
