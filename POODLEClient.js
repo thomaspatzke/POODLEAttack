@@ -25,6 +25,7 @@ function sslRequestHandler() {
 function queryNextRequest() {
     var xhr = new XMLHttpRequest();
     xhr.onreadystatechange = queryNextRequestHandler;
+    xhr.onerror = queryNextRequest;
     xhr.open("GET", "/nextRequest");
     xhr.send(null);
 }
