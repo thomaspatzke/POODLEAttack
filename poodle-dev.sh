@@ -14,10 +14,10 @@ then
 elif [ "$1" == "sslserver" ]
 then
     socat -v -x OPENSSL-LISTEN:4433,verify=0,method=SSLv3,cert=cert-poodle.pem,key=key-poodle.pem,reuseaddr,fork TCP:localhost:4080
+elif [ "$1" == "attacker-debug" ]
+then
+    ./poodle.py -d --start-offset 384 --target-port 4433 https://localhost:8443
 elif [ "$1" == "attacker" ]
 then
-    ./poodle.py -d --target-port 4433 https://localhost:8443
-elif [ "$1" == "attacker-nondebug" ]
-then
-    ./poodle.py --target-port 4433 https://localhost:8443
+    ./poodle.py --start-offset 384 --target-port 4433 https://localhost:8443
 fi
